@@ -1,6 +1,6 @@
-from datetime import date, timedelta
 import calendar
 import re
+from datetime import date, timedelta
 
 # Mapping weekday names to weekday() integers (Monday=0 ... Sunday=6)
 _WEEKDAYS = {
@@ -68,10 +68,18 @@ def parse(s: str, today: date | None = None) -> date:
     text = " ".join(s.strip().split()).lower()
 
     # ── ISO 8601 "YYYY-MM-DD" (zero-padded or not) ───────────────────────────
-    # Try fromisoformat first; if the string looks like a date but is invalid
-    # (e.g. "2025-13-01") let ValueError propagate naturally.
     if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", text):
         return date.fromisoformat(text)
+
+    # ── Slash-separated: "YYYY/MM/DD" ────────────────────────────────────────
+    m = re.fullmatch(r"(\d{4})/(\d{1,2})/(\d{1,2})", text)
+    if m:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+    # ── Slash-separated: "MM/DD/YYYY" ────────────────────────────────────────
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if m:
+        return date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
 
     # ── "today" ──────────────────────────────────────────────────────────────
     if text == "today":
