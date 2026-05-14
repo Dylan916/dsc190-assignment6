@@ -15,9 +15,18 @@ _WEEKDAYS = {
 
 # Mapping month names to month numbers
 _MONTHS = {
-    "january": 1, "february": 2, "march": 3, "april": 4,
-    "may": 5, "june": 6, "july": 7, "august": 8,
-    "september": 9, "october": 10, "november": 11, "december": 12,
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
 }
 
 
@@ -106,7 +115,11 @@ def parse(s: str, today: date | None = None) -> date:
         amount, unit, date_str = int(m.group(1)), m.group(2), m.group(3)
         anchor = _parse_specific_date(date_str)
         if anchor:
-            delta = timedelta(days=amount) if unit.startswith("day") else timedelta(weeks=amount)
+            delta = (
+                timedelta(days=amount)
+                if unit.startswith("day")
+                else timedelta(weeks=amount)
+            )
             return anchor - delta
 
     # ── "N days/weeks after <specific date>" ─────────────────────────────────
@@ -115,7 +128,11 @@ def parse(s: str, today: date | None = None) -> date:
         amount, unit, date_str = int(m.group(1)), m.group(2), m.group(3)
         anchor = _parse_specific_date(date_str)
         if anchor:
-            delta = timedelta(days=amount) if unit.startswith("day") else timedelta(weeks=amount)
+            delta = (
+                timedelta(days=amount)
+                if unit.startswith("day")
+                else timedelta(weeks=amount)
+            )
             return anchor + delta
 
     raise ValueError(f"Cannot parse date expression: {s!r}")
