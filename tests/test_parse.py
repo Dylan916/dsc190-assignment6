@@ -1,4 +1,4 @@
-from nldate import parse
+from nldate.parse import parse
 from datetime import date
 
 def test_relative_offset_before_specific_date():
