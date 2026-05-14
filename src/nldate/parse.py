@@ -1,152 +1,177 @@
+from __future__ import annotations
+
 import calendar
 import re
 from datetime import date, timedelta
 
-# Mapping weekday names to weekday() integers (Monday=0 ... Sunday=6)
-_WEEKDAYS = {
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
+WEEKDAYS: dict[str, int] = {
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+    "friday": 4, "saturday": 5, "sunday": 6,
 }
 
-# Mapping month names to month numbers
-_MONTHS = {
-    "january": 1,
-    "february": 2,
-    "march": 3,
-    "april": 4,
-    "may": 5,
-    "june": 6,
-    "july": 7,
-    "august": 8,
-    "september": 9,
-    "october": 10,
-    "november": 11,
-    "december": 12,
+MONTHS: dict[str, int] = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4,
+    "jun": 6, "jul": 7, "aug": 8, "sep": 9, "sept": 9,
+    "oct": 10, "nov": 11, "dec": 12,
 }
 
+WORD_NUMBERS: dict[str, int] = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+}
 
-def _parse_specific_date(text: str) -> date | None:
-    """Try to parse a specific date like 'December 1st, 2025' or 'January 10th, 2026'."""
-    pattern = r"(\w+)\s+(\d+)(?:st|nd|rd|th)?,?\s+(\d{4})"
-    m = re.search(pattern, text, re.IGNORECASE)
+_NUM = r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)"
+_UNIT = r"(days?|weeks?|months?|years?)"
+
+
+def _parse_int(s: str) -> int:
+    s = s.strip().lower()
+    if s.isdigit():
+        return int(s)
+    if s in WORD_NUMBERS:
+        return WORD_NUMBERS[s]
+    raise ValueError(f"Cannot parse number: {s!r}")
+
+
+def _add_months(d: date, n: int) -> date:
+    month = d.month - 1 + n
+    year = d.year + month // 12
+    month = month % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _apply_delta(base: date, n: int, unit: str) -> date:
+    unit = unit if unit.endswith("s") else unit + "s"
+    if unit == "days":
+        return base + timedelta(days=n)
+    if unit == "weeks":
+        return base + timedelta(weeks=n)
+    if unit == "months":
+        return _add_months(base, n)
+    if unit == "years":
+        return _add_months(base, n * 12)
+    raise ValueError(f"Unknown unit: {unit!r}")
+
+
+def _parse_absolute(s: str) -> date | None:
+    s = s.strip()
+
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
     if m:
-        month_name, day_str, year_str = m.group(1), m.group(2), m.group(3)
-        month = _MONTHS.get(month_name.lower())
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if m:
+        return date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+
+    m = re.search(r"(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})", s, re.IGNORECASE)
+    if m:
+        month = MONTHS.get(m.group(1).lower())
         if month:
-            return date(int(year_str), month, int(day_str))
+            return date(int(m.group(3)), month, int(m.group(2)))
+
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+(\w+),?\s+(\d{4})", s, re.IGNORECASE)
+    if m:
+        month = MONTHS.get(m.group(2).lower())
+        if month:
+            return date(int(m.group(3)), month, int(m.group(1)))
+
+    return None
+
+
+def _resolve_anchor(s: str, today: date) -> date:
+    s = s.strip().lower()
+    if s in ("today", "now"):
+        return today
+    if s == "tomorrow":
+        return today + timedelta(days=1)
+    if s == "yesterday":
+        return today - timedelta(days=1)
+    result = _parse_absolute(s)
+    if result is not None:
+        return result
+    raise ValueError(f"Cannot parse anchor: {s!r}")
+
+
+def _try_weekday(s: str, today: date) -> date | None:
+    s = s.strip().lower()
+
+    m = re.fullmatch(r"next\s+(\w+)", s)
+    if m and m.group(1) in WEEKDAYS:
+        target = WEEKDAYS[m.group(1)]
+        return today + timedelta(days=(target - today.weekday()) % 7 or 7)
+
+    m = re.fullmatch(r"(?:last|previous)\s+(\w+)", s)
+    if m and m.group(1) in WEEKDAYS:
+        target = WEEKDAYS[m.group(1)]
+        return today - timedelta(days=(today.weekday() - target) % 7 or 7)
+
+    m = re.fullmatch(r"this\s+(\w+)", s)
+    if m and m.group(1) in WEEKDAYS:
+        target = WEEKDAYS[m.group(1)]
+        return today + timedelta(days=(target - today.weekday()) % 7)
+
     return None
 
 
 def parse(s: str, today: date | None = None) -> date:
-    """Parse a natural language date string and return a datetime.date.
-
-    Parameters
-    ----------
-    s:     Natural language date expression (case- and whitespace-insensitive).
-    today: Reference date for relative expressions. Defaults to date.today().
-
-    Supported expressions
-    ---------------------
-    - "today", "tomorrow", "yesterday"
-    - "N days from now"
-    - "next <weekday>", "last <weekday>"
-    - "N days before <specific date>"
-    - "N weeks before <specific date>"
-    - "N days after <specific date>"
-    - "N weeks after <specific date>"
-    - "end of month"
-    """
     if today is None:
         today = date.today()
 
-    # Normalise: strip surrounding whitespace and collapse internal whitespace
-    text = " ".join(s.strip().split()).lower()
+    s = " ".join(s.strip().split())
+    s_lower = s.lower()
 
-    # ── ISO 8601 "YYYY-MM-DD" (zero-padded or not) ───────────────────────────
-    if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", text):
-        return date.fromisoformat(text)
-
-    # ── Slash-separated: "YYYY/MM/DD" ────────────────────────────────────────
-    m = re.fullmatch(r"(\d{4})/(\d{1,2})/(\d{1,2})", text)
-    if m:
-        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-
-    # ── Slash-separated: "MM/DD/YYYY" ────────────────────────────────────────
-    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", text)
-    if m:
-        return date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
-
-    # ── "today" ──────────────────────────────────────────────────────────────
-    if text == "today":
+    if s_lower in ("today", "now"):
         return today
-
-    # ── "tomorrow" ───────────────────────────────────────────────────────────
-    if text == "tomorrow":
+    if s_lower == "tomorrow":
         return today + timedelta(days=1)
-
-    # ── "yesterday" ──────────────────────────────────────────────────────────
-    if text == "yesterday":
+    if s_lower == "yesterday":
         return today - timedelta(days=1)
+    if s_lower == "end of month":
+        return date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
 
-    # ── "end of month" ───────────────────────────────────────────────────────
-    if text == "end of month":
-        last_day = calendar.monthrange(today.year, today.month)[1]
-        return date(today.year, today.month, last_day)
+    weekday_result = _try_weekday(s_lower, today)
+    if weekday_result is not None:
+        return weekday_result
 
-    # ── "N days from now" ────────────────────────────────────────────────────
-    m = re.fullmatch(r"(\d+)\s+days?\s+from\s+now", text)
+    m = re.fullmatch(rf"in\s+{_NUM}\s+{_UNIT}", s_lower)
     if m:
-        return today + timedelta(days=int(m.group(1)))
+        return _apply_delta(today, _parse_int(m.group(1)), m.group(2))
 
-    # ── "next <weekday>" ─────────────────────────────────────────────────────
-    m = re.fullmatch(r"next\s+(\w+)", text)
+    m = re.fullmatch(rf"{_NUM}\s+{_UNIT}\s+ago", s_lower)
     if m:
-        target = _WEEKDAYS.get(m.group(1))
-        if target is not None:
-            days_ahead = (target - today.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7  # "next Monday" when today IS Monday → next week
-            return today + timedelta(days=days_ahead)
+        return _apply_delta(today, -_parse_int(m.group(1)), m.group(2))
 
-    # ── "last <weekday>" ─────────────────────────────────────────────────────
-    m = re.fullmatch(r"last\s+(\w+)", text)
+    m = re.fullmatch(rf"{_NUM}\s+{_UNIT}\s+from\s+(.+)", s_lower)
     if m:
-        target = _WEEKDAYS.get(m.group(1))
-        if target is not None:
-            days_back = (today.weekday() - target) % 7
-            if days_back == 0:
-                days_back = 7  # "last Monday" when today IS Monday → last week
-            return today - timedelta(days=days_back)
+        return _apply_delta(_resolve_anchor(m.group(3), today), _parse_int(m.group(1)), m.group(2))
 
-    # ── "N days/weeks before <specific date>" ────────────────────────────────
-    m = re.fullmatch(r"(\d+)\s+(days?|weeks?)\s+before\s+(.+)", text)
+    m = re.fullmatch(
+        rf"{_NUM}\s+{_UNIT}\s+and\s+{_NUM}\s+{_UNIT}\s+(after|before)\s+(.+)",
+        s_lower,
+    )
     if m:
-        amount, unit, date_str = int(m.group(1)), m.group(2), m.group(3)
-        anchor = _parse_specific_date(date_str)
-        if anchor:
-            delta = (
-                timedelta(days=amount)
-                if unit.startswith("day")
-                else timedelta(weeks=amount)
-            )
-            return anchor - delta
+        n1, u1 = _parse_int(m.group(1)), m.group(2)
+        n2, u2 = _parse_int(m.group(3)), m.group(4)
+        direction = 1 if m.group(5) == "after" else -1
+        anchor = _resolve_anchor(m.group(6), today)
+        return _apply_delta(_apply_delta(anchor, direction * n1, u1), direction * n2, u2)
 
-    # ── "N days/weeks after <specific date>" ─────────────────────────────────
-    m = re.fullmatch(r"(\d+)\s+(days?|weeks?)\s+after\s+(.+)", text)
+    m = re.fullmatch(rf"{_NUM}\s+{_UNIT}\s+(after|before)\s+(.+)", s_lower)
     if m:
-        amount, unit, date_str = int(m.group(1)), m.group(2), m.group(3)
-        anchor = _parse_specific_date(date_str)
-        if anchor:
-            delta = (
-                timedelta(days=amount)
-                if unit.startswith("day")
-                else timedelta(weeks=amount)
-            )
-            return anchor + delta
+        direction = 1 if m.group(3) == "after" else -1
+        anchor = _resolve_anchor(m.group(4), today)
+        return _apply_delta(anchor, direction * _parse_int(m.group(1)), m.group(2))
 
-    raise ValueError(f"Cannot parse date expression: {s!r}")
+    absolute = _parse_absolute(s_lower)
+    if absolute is not None:
+        return absolute
+
+    raise ValueError(f"Cannot parse date string: {s!r}")
