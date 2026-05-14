@@ -103,25 +103,28 @@ def _parse_named_month_date(text: str) -> date | None:
       - '1st December 2025'    (Day Month Year   – European)
       - '1 December 2025'      (Day Month Year)
       - 'Dec 1, 2025'          (abbreviated month)
+      - 'Dec. 1, 2025'         (abbreviated month with period)
     """
     ordinal = r"(?:st|nd|rd|th)?"
     sep = r"[,\s]+"
+    # month token: letters optionally followed by a period (e.g. Dec.)
+    mon_tok = r"([a-z]+\.?)"
 
-    # Month-first: "December 1st, 2025"
+    # Month-first: "December 1st, 2025" / "Dec. 1, 2025"
     m = re.fullmatch(
-        rf"([a-z]+)\s+(\d{{1,2}}){ordinal}{sep}(\d{{4}})", text, re.IGNORECASE
+        rf"{mon_tok}\s+(\d{{1,2}}){ordinal}{sep}(\d{{4}})", text, re.IGNORECASE
     )
     if m:
-        month = _MONTHS.get(m.group(1).lower())
+        month = _MONTHS.get(m.group(1).lower().rstrip("."))
         if month:
             return date(int(m.group(3)), month, int(m.group(2)))
 
-    # Day-first: "1st December 2025"
+    # Day-first: "1st December 2025" / "1st Dec. 2025"
     m = re.fullmatch(
-        rf"(\d{{1,2}}){ordinal}\s+([a-z]+)\s+(\d{{4}})", text, re.IGNORECASE
+        rf"(\d{{1,2}}){ordinal}\s+([a-z]+\.?)\s+(\d{{4}})", text, re.IGNORECASE
     )
     if m:
-        month = _MONTHS.get(m.group(2).lower())
+        month = _MONTHS.get(m.group(2).lower().rstrip("."))
         if month:
             return date(int(m.group(3)), month, int(m.group(1)))
 
@@ -151,9 +154,11 @@ def _parse_anchor(text: str, today: date) -> date | None:
 
 def _try_absolute(text: str, today: date) -> date | None:  # noqa: ARG001
     """Attempt to parse text as a bare absolute date; return None if unknown."""
-    # ISO 8601
-    if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", text):
-        return date.fromisoformat(text)
+    # ISO 8601 (strict or non-padded: 2025-12-04 or 2025-1-4)
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if m:
+        # Use date() constructor — raises ValueError for invalid dates (e.g. month 13)
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
     # YYYY/MM/DD
     m = re.fullmatch(r"(\d{4})/(\d{1,2})/(\d{1,2})", text)
     if m:
