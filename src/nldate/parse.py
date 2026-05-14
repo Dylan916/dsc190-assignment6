@@ -67,8 +67,10 @@ def parse(s: str, today: date | None = None) -> date:
     # Normalise: strip surrounding whitespace and collapse internal whitespace
     text = " ".join(s.strip().split()).lower()
 
-    # ── ISO 8601 "YYYY-MM-DD" ─────────────────────────────────────────────────
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+    # ── ISO 8601 "YYYY-MM-DD" (zero-padded or not) ───────────────────────────
+    # Try fromisoformat first; if the string looks like a date but is invalid
+    # (e.g. "2025-13-01") let ValueError propagate naturally.
+    if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", text):
         return date.fromisoformat(text)
 
     # ── "today" ──────────────────────────────────────────────────────────────
