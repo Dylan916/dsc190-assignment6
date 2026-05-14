@@ -308,13 +308,15 @@ def parse(s: str, today: date | None = None) -> date:
         if amount is not None and anchor is not None:
             return _apply_delta(anchor, amount, m.group(2), 1)
 
-    # ── Compound: "N units and M units before/after <anchor>" ────────────────
-    # e.g. "1 year and 2 months after yesterday"
+    # ── Compound: "N units [,/and] M units before/after <anchor>" ────────────
+    # Supports: "1 year and 2 months", "2 years, 3 months", "1 yr, 2 mo, and 3 days"
     _unit_pat = (
         r"(\d+|" + "|".join(_WORD_NUMBERS) + r")\s+(days?|weeks?|months?|years?)"
     )
+    # separator between unit chunks: comma, "and", or ", and"
+    _sep = r"(?:\s*,\s*(?:and\s+)?|\s+and\s+)"
     compound = re.fullmatch(
-        rf"{_unit_pat}(?:\s+and\s+{_unit_pat})*\s+(before|after)\s+(.+)", text
+        rf"{_unit_pat}(?:{_sep}{_unit_pat})*\s+(before|after)\s+(.+)", text
     )
     if compound and compound.lastindex is not None:
         direction_word = compound.group(compound.lastindex - 1)
