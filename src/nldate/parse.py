@@ -241,6 +241,15 @@ def parse(s: str, today: date | None = None) -> date:
     if text == "yesterday":
         return today - timedelta(days=1)
 
+    # ── "the day before/after <anchor>" ──────────────────────────────────────
+    # Covers: "the day after tomorrow", "the day before yesterday", etc.
+    m = re.fullmatch(r"the\s+day\s+(before|after)\s+(.+)", text)
+    if m:
+        direction = 1 if m.group(1) == "after" else -1
+        anchor = _parse_anchor(m.group(2), today)
+        if anchor is not None:
+            return anchor + timedelta(days=direction)
+
     # ── Month / year boundaries ───────────────────────────────────────────────
     if text in ("start of month", "beginning of month"):
         return date(today.year, today.month, 1)
